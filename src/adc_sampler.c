@@ -50,7 +50,7 @@ static void timer_fn(struct k_timer *t)
  *
  * TODO (DMA — phase 3, full CPU sleep): Configure SAADC scan mode triggered
  * by TIMER via DPPI; handle the SAADC END event in a callback that writes
- * directly into adc_sample_q.  The CPU can then stay in System ON Low Power
+ * directly into adc_sample_q. The CPU can then stay in System ON Low Power
  * between callbacks entirely.
  */
 
