@@ -115,7 +115,7 @@ cd tools
 
 python ble_logger.py                      # auto-named CSV with timestamp
 python ble_logger.py -o my_data.csv       # custom output file
-python ble_logger.py --name GlassTENG_ADC # if the device name was changed
+python ble_logger.py --name Device_ADC    # if the device name was changed
 ```
 
 The script scans, connects, and streams to CSV until Ctrl+C.
