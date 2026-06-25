@@ -48,7 +48,6 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t
 		adc_sampler_start(); // TODO: doesn't actually start up properly on the BLE side
 	}
 	gpio_pin_toggle_dt(&led);
-	k_msleep(10); // optional: small debounce? 
 }
 
 /* SETUP BUTTON AND INTERRUPT */
