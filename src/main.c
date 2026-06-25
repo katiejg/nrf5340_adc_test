@@ -45,9 +45,10 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t
 	if (gpio_is_ready_dt(&led) && gpio_pin_get_dt(&led)) {
 		adc_sampler_stop();
 	} else {
-		adc_sampler_start();
+		adc_sampler_start(); // TODO: doesn't actually start up properly on the BLE side
 	}
 	gpio_pin_toggle_dt(&led);
+	k_msleep(10); // optional: small debounce? 
 }
 
 /* SETUP BUTTON AND INTERRUPT */
