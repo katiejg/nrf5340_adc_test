@@ -1,5 +1,5 @@
 """
-BLE ADC Logger — GlassTENG nRF5340
+BLE ADC Logger — Device nRF5340
 ====================================
 Connects to the device, receives NUS TX notifications, parses binary
 packets, and saves every sample to a CSV file.
