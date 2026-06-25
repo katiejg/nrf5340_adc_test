@@ -1,181 +1,181 @@
-/* SPDX-License-Identifier: Apache-2.0 */
-#include "adc_sampler.h"
+// /* SPDX-License-Identifier: Apache-2.0 */
+// #include "adc_sampler.h"
 
-#include <zephyr/kernel.h>
-#include <zephyr/device.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/drivers/adc.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/util.h>
+// #include <zephyr/kernel.h>
+// #include <zephyr/device.h>
+// #include <zephyr/devicetree.h>
+// #include <zephyr/drivers/adc.h>
+// #include <zephyr/logging/log.h>
+// #include <zephyr/sys/util.h>
 
-LOG_MODULE_REGISTER(adc_sampler, LOG_LEVEL_DBG);
+// LOG_MODULE_REGISTER(adc_sampler, LOG_LEVEL_DBG);
 
-#define DT_SPEC_AND_COMMA(node_id, prop, idx) \
-	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
+// #define DT_SPEC_AND_COMMA(node_id, prop, idx) 
+// 	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
 
-static const struct adc_dt_spec adc_channels[] = {
-	DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels, DT_SPEC_AND_COMMA)
-};
+// static const struct adc_dt_spec adc_channels[] = {
+// 	DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels, DT_SPEC_AND_COMMA)
+// };
 
-BUILD_ASSERT(ARRAY_SIZE(adc_channels) == ADC_NUM_CHANNELS,
-	     "overlay io-channels count must equal ADC_NUM_CHANNELS");
+// BUILD_ASSERT(ARRAY_SIZE(adc_channels) == ADC_NUM_CHANNELS,
+// 	     "overlay io-channels count must equal ADC_NUM_CHANNELS");
 
-/* ── Queue (contract with BLE consumer) ──────────────────────────────────── */
+// /* ── Queue (contract with BLE consumer) ──────────────────────────────────── */
 
-K_MSGQ_DEFINE(adc_sample_q, sizeof(struct adc_sample), 20, 4);
+// K_MSGQ_DEFINE(adc_sample_q, sizeof(struct adc_sample), 20, 4);
 
-/* ── Internal state ───────────────────────────────────────────────────────── */
+// /* ── Internal state ───────────────────────────────────────────────────────── */
 
-#define SAMPLE_INTERVAL_MS 10   /* 100 Hz */
+// #define SAMPLE_INTERVAL_MS 10   /* 100 Hz */
 
-static struct k_timer sample_timer;
-static K_SEM_DEFINE(sample_sem, 0, 1);
-static volatile bool running;
+// static struct k_timer sample_timer;
+// static K_SEM_DEFINE(sample_sem, 0, 1);
+// static volatile bool running;
 
-static void timer_fn(struct k_timer *t)
-{
-	ARG_UNUSED(t);
-	k_sem_give(&sample_sem);
-}
+// static void timer_fn(struct k_timer *t)
+// {
+// 	ARG_UNUSED(t);
+// 	k_sem_give(&sample_sem);
+// }
 
-/* ── Async Read (phase 2) ───────
- *
- * Thread yields during conversion and the CPU can enter sleep between samples.
- *
- * TODO (DMA — phase 3, full CPU sleep): Configure SAADC scan mode triggered
- * by TIMER via DPPI; handle the SAADC END event in a callback that writes
- * directly into adc_sample_q. The CPU can then stay in System ON Low Power
- * between callbacks entirely.
-*/
+// /* ── Async Read (phase 2) ───────
+//  *
+//  * Thread yields during conversion and the CPU can enter sleep between samples.
+//  *
+//  * TODO (DMA — phase 3, full CPU sleep): Configure SAADC scan mode triggered
+//  * by TIMER via DPPI; handle the SAADC END event in a callback that writes
+//  * directly into adc_sample_q. The CPU can then stay in System ON Low Power
+//  * between callbacks entirely.
+// */
 
-static void sample_all_channels_async(struct adc_sample *out)
-{
-	int16_t buf;
-	struct adc_sequence sequence = {
-		.buffer      = &buf,
-		.buffer_size = sizeof(buf),
-	};
+// static void sample_all_channels_async(struct adc_sample *out)
+// {
+// 	int16_t buf;
+// 	struct adc_sequence sequence = {
+// 		.buffer      = &buf,
+// 		.buffer_size = sizeof(buf),
+// 	};
 
-	static struct k_poll_signal async_sig = K_POLL_SIGNAL_INITIALIZER(async_sig);
-	struct k_poll_event async_evt = 
-		K_POLL_EVENT_INITIALIZER(K_POLL_TYPE_SIGNAL, 
-						K_POLL_MODE_NOTIFY_ONLY, 
-						&async_sig);
+// 	static struct k_poll_signal async_sig = K_POLL_SIGNAL_INITIALIZER(async_sig);
+// 	struct k_poll_event async_evt = 
+// 		K_POLL_EVENT_INITIALIZER(K_POLL_TYPE_SIGNAL, 
+// 						K_POLL_MODE_NOTIFY_ONLY, 
+// 						&async_sig);
 
-	out->timestamp_us = k_cyc_to_us_floor32(k_cycle_get_32());
+// 	out->timestamp_us = k_cyc_to_us_floor32(k_cycle_get_32());
 
-	for (size_t i = 0; i < ARRAY_SIZE(adc_channels); i++) {
-		// Initialize sequence
-		int err = adc_sequence_init_dt(&adc_channels[i], &sequence);
-		if (err < 0) {
-			LOG_ERR("sequence init ch%u: %d", i, err);
-			out->raw[i] = 0;
-			out->mv[i]  = 0;
-			continue;
-		}
+// 	for (size_t i = 0; i < ARRAY_SIZE(adc_channels); i++) {
+// 		// Initialize sequence
+// 		int err = adc_sequence_init_dt(&adc_channels[i], &sequence);
+// 		if (err < 0) {
+// 			LOG_ERR("sequence init ch%u: %d", i, err);
+// 			out->raw[i] = 0;
+// 			out->mv[i]  = 0;
+// 			continue;
+// 		}
 
-		// Reset signal before each read
-		k_poll_signal_reset(&async_sig);
-		async_evt.state = K_POLL_STATE_NOT_READY;
+// 		// Reset signal before each read
+// 		k_poll_signal_reset(&async_sig);
+// 		async_evt.state = K_POLL_STATE_NOT_READY;
 
-		err = adc_read_async(adc_channels[i].dev, &sequence, &async_sig);
-		if (err < 0) {
-			LOG_ERR("adc_read ch%u: %d", i, err);
-			out->raw[i] = 0;
-			out->mv[i]  = 0;
-			continue;
-		}
+// 		err = adc_read_async(adc_channels[i].dev, &sequence, &async_sig);
+// 		if (err < 0) {
+// 			LOG_ERR("adc_read ch%u: %d", i, err);
+// 			out->raw[i] = 0;
+// 			out->mv[i]  = 0;
+// 			continue;
+// 		}
 
-		// Sleep while waiting for completion
-		err = k_poll(&async_evt, 1, K_FOREVER);
-		if (err < 0) {
-			LOG_ERR("k_poll ch%u: %d", i, err);
-			out->raw[i] = 0;
-			out->mv[i]  = 0;
-			continue;
-		}
+// 		// Sleep while waiting for completion
+// 		err = k_poll(&async_evt, 1, K_FOREVER);
+// 		if (err < 0) {
+// 			LOG_ERR("k_poll ch%u: %d", i, err);
+// 			out->raw[i] = 0;
+// 			out->mv[i]  = 0;
+// 			continue;
+// 		}
 
-		int32_t val_mv = (int32_t)buf;
-		out->raw[i] = buf;
+// 		int32_t val_mv = (int32_t)buf;
+// 		out->raw[i] = buf;
 
-		LOG_INF("ADC reading[%u us]: %s, channel %d: Raw: %d",
-			out->timestamp_us,
-			adc_channels[i].dev->name,
-			adc_channels[i].channel_id,
-			out->raw[i]);
+// 		LOG_INF("ADC reading[%u us]: %s, channel %d: Raw: %d",
+// 			out->timestamp_us,
+// 			adc_channels[i].dev->name,
+// 			adc_channels[i].channel_id,
+// 			out->raw[i]);
 
-		err = adc_raw_to_millivolts_dt(&adc_channels[i], &val_mv);
-		if (err < 0) {
-			LOG_WRN("ch%u: mV not available", i);
-			out->mv[i] = 0;
-		} else {
-			LOG_INF("ch%u: %d mV", i, val_mv);
-			out->mv[i] = val_mv;
-		}
-	}
-}
+// 		err = adc_raw_to_millivolts_dt(&adc_channels[i], &val_mv);
+// 		if (err < 0) {
+// 			LOG_WRN("ch%u: mV not available", i);
+// 			out->mv[i] = 0;
+// 		} else {
+// 			LOG_INF("ch%u: %d mV", i, val_mv);
+// 			out->mv[i] = val_mv;
+// 		}
+// 	}
+// }
 
-/* ── Sampler thread ───────────────────────────────────────────────────────── */
+// /* ── Sampler thread ───────────────────────────────────────────────────────── */
 
-static void sampler_thread_fn(void *a, void *b, void *c)
-{
-	ARG_UNUSED(a);
-	ARG_UNUSED(b);
-	ARG_UNUSED(c);
+// static void sampler_thread_fn(void *a, void *b, void *c)
+// {
+// 	ARG_UNUSED(a);
+// 	ARG_UNUSED(b);
+// 	ARG_UNUSED(c);
 
-	while (1) {
-		k_sem_take(&sample_sem, K_FOREVER);
+// 	while (1) {
+// 		k_sem_take(&sample_sem, K_FOREVER);
 
-		if (!running) {
-			continue;
-		}
+// 		if (!running) {
+// 			continue;
+// 		}
 
-		struct adc_sample s;
-		// sample_all_channels(&s);
-		sample_all_channels_async(&s);
+// 		struct adc_sample s;
+// 		// sample_all_channels(&s);
+// 		sample_all_channels_async(&s);
 
-		if (k_msgq_put(&adc_sample_q, &s, K_NO_WAIT) != 0) {
-			LOG_WRN("queue full, sample dropped");
-		}
-	}
-}
+// 		if (k_msgq_put(&adc_sample_q, &s, K_NO_WAIT) != 0) {
+// 			LOG_WRN("queue full, sample dropped");
+// 		}
+// 	}
+// }
 
-K_THREAD_DEFINE(sampler_tid, 1024, sampler_thread_fn,
-		NULL, NULL, NULL, 5, 0, 0);
+// K_THREAD_DEFINE(sampler_tid, 1024, sampler_thread_fn,
+// 		NULL, NULL, NULL, 5, 0, 0);
 
-/* ── Public API ───────────────────────────────────────────────────────────── */
+// /* ── Public API ───────────────────────────────────────────────────────────── */
 
-int adc_sampler_init(void)
-{
-	for (size_t i = 0; i < ARRAY_SIZE(adc_channels); i++) {
-		if (!adc_is_ready_dt(&adc_channels[i])) {
-			LOG_ERR("ADC device %s not ready",
-				adc_channels[i].dev->name);
-			return -ENODEV;
-		}
+// int adc_sampler_init(void)
+// {
+// 	for (size_t i = 0; i < ARRAY_SIZE(adc_channels); i++) {
+// 		if (!adc_is_ready_dt(&adc_channels[i])) {
+// 			LOG_ERR("ADC device %s not ready",
+// 				adc_channels[i].dev->name);
+// 			return -ENODEV;
+// 		}
 
-		int err = adc_channel_setup_dt(&adc_channels[i]);
-		if (err < 0) {
-			LOG_ERR("channel setup ch%u: %d", i, err);
-			return err;
-		}
-	}
+// 		int err = adc_channel_setup_dt(&adc_channels[i]);
+// 		if (err < 0) {
+// 			LOG_ERR("channel setup ch%u: %d", i, err);
+// 			return err;
+// 		}
+// 	}
 
-	k_timer_init(&sample_timer, timer_fn, NULL);
-	LOG_INF("ADC sampler ready, %u channels", ADC_NUM_CHANNELS);
-	return 0;
-}
+// 	k_timer_init(&sample_timer, timer_fn, NULL);
+// 	LOG_INF("ADC sampler ready, %u channels", ADC_NUM_CHANNELS);
+// 	return 0;
+// }
 
-void adc_sampler_start(void)
-{
-	running = true;
-	k_timer_start(&sample_timer, K_NO_WAIT, K_MSEC(SAMPLE_INTERVAL_MS));
-	LOG_INF("ADC sampling started @ %d Hz", 1000 / SAMPLE_INTERVAL_MS);
-}
+// void adc_sampler_start(void)
+// {
+// 	running = true;
+// 	k_timer_start(&sample_timer, K_NO_WAIT, K_MSEC(SAMPLE_INTERVAL_MS));
+// 	LOG_INF("ADC sampling started @ %d Hz", 1000 / SAMPLE_INTERVAL_MS);
+// }
 
-void adc_sampler_stop(void)
-{
-	running = false;
-	k_timer_stop(&sample_timer);
-	LOG_INF("ADC sampling stopped");
-}
+// void adc_sampler_stop(void)
+// {
+// 	running = false;
+// 	k_timer_stop(&sample_timer);
+// 	LOG_INF("ADC sampling stopped");
+// }
