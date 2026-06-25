@@ -25,7 +25,7 @@ from bleak import BleakClient, BleakScanner
 
 # ── Device / BLE constants ─────────────────────────────────────────────────────
 
-DEVICE_NAME = "GlassTENG_ADC"         # CONFIG_BT_DEVICE_NAME in prj.conf
+DEVICE_NAME = "Device_ADC"         # CONFIG_BT_DEVICE_NAME in prj.conf
 
 # NUS TX characteristic (device → PC, notify)
 NUS_TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
