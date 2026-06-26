@@ -4,3 +4,6 @@
 
 # build
 /build*/
+
+# ignore data collection tests
+/tools/*.csv
